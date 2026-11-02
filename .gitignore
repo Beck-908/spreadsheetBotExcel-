@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# PyInstaller output: rebuild with build_exe.bat
+build/
+dist/
+
+# Real profiles and workbooks hold people's personal details: never commit them.
+# (Tests draw their own fake PDFs at run time.)
+*.pdf
+*.xlsx
+*.xlsm
+*.xls
+backups/
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+Thumbs.db
+.DS_Store

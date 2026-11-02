@@ -1,0 +1,64 @@
+import openpyxl
+import pytest
+import win32con
+import win32file
+
+from conftest import build_profile_pdf
+from pdf_excel_bot.person import COLUMNS
+from pdf_excel_bot.runner import run
+from pdf_excel_bot.workbooks import WorkbookLockedError
+
+
+@pytest.fixture
+def book(tmp_path):
+    wb = openpyxl.Workbook()
+    wb.active.title = "People"
+    wb.active.append(COLUMNS)
+    path = tmp_path / "company.xlsx"
+    wb.save(path)
+    return path
+
+
+def test_batch_adds_skips_and_reports(tmp_path, book, profile_pdf, blank_pdf):
+    same_person_again = build_profile_pdf(tmp_path / "jordan_copy.pdf")
+    log = []
+
+    summary = run([profile_pdf, blank_pdf, same_person_again], book, log.append, show_result=False)
+
+    assert [p.name for p in summary.added] == ["Jordan Avery Testcase"]
+    assert [p.source for p in summary.duplicates] == ["jordan_copy.pdf"]
+    assert [name for name, _ in summary.failed] == ["scanned.pdf"]
+    assert summary.mode == "file"
+    assert summary.backup.exists() and summary.backup.parent == tmp_path / "backups"
+
+    ws = openpyxl.load_workbook(book)["People"]
+    assert ws.max_row == 2
+    assert ws["A2"].value == "Jordan Avery Testcase"
+
+    text = "\n".join(log)
+    for name in ("jordan.pdf", "scanned.pdf", "jordan_copy.pdf"):
+        assert name in text
+    assert "1 added, 1 skipped as duplicates, 1 failed" in text
+
+
+def test_nothing_readable_leaves_workbook_alone(tmp_path, book, blank_pdf):
+    before = book.read_bytes()
+    log = []
+
+    summary = run([blank_pdf], book, log.append, show_result=False)
+
+    assert summary.added == [] and summary.backup is None
+    assert book.read_bytes() == before
+    assert not (tmp_path / "backups").exists()
+    assert "not touched" in log[-1]
+
+
+def test_locked_workbook_raises_before_backup(tmp_path, book, profile_pdf):
+    handle = win32file.CreateFile(str(book), win32con.GENERIC_READ, win32con.FILE_SHARE_READ, None,
+                                  win32con.OPEN_EXISTING, 0, None)
+    try:
+        with pytest.raises(WorkbookLockedError):
+            run([profile_pdf], book, lambda _: None, show_result=False)
+    finally:
+        handle.Close()
+    assert not (tmp_path / "backups").exists()

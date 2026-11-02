@@ -43,7 +43,7 @@ def test_file_workbook_round_trip(tmp_path):
     ws = saved["People"]
     assert [c.value for c in ws[1]] == list(COLUMNS)
     assert ws["A2"].value == "Jordan Avery"
-    assert ws["B2"].value == "5550001234" and ws["B2"].number_format == "@"
+    assert ws["B2"].value == 5550001234 and ws["B2"].number_format == "0"
     assert ws["C2"].value == 12345.67 and ws["C2"].number_format == '"$"#,##0.00'
     assert ws["K2"].value == 47
 

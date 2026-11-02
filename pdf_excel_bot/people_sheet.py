@@ -11,7 +11,8 @@ from typing import Protocol
 from .person import COLUMNS, Person
 
 HEADER_SEARCH_ROWS = 10
-NUMBER_FORMATS = {"Property ID": "@", "Value": '"$"#,##0.00', "Age": "0"}
+NUMBER_FORMATS = {"Property ID": "0", "Value": '"$"#,##0.00', "Age": "0"}
+MAX_EXACT_DIGITS = 15  # Excel keeps 15 significant digits; longer IDs stay text
 
 
 class SheetBackend(Protocol):
@@ -79,20 +80,23 @@ def append_people(sheet: SheetBackend, people: list[Person]) -> AppendResult:
     last_row = max(last_row, header_row)
 
     id_col = col_of["Property ID"]
-    seen = {_id_text(row[id_col - 1]) for row in values[header_row:] if len(row) >= id_col and _filled(row[id_col - 1])}
+    seen = {_id_key(row[id_col - 1]) for row in values[header_row:] if len(row) >= id_col and _filled(row[id_col - 1])}
 
     for person in people:
-        if person.property_id in seen:
+        if _id_key(person.property_id) in seen:
             result.duplicates.append(person)
             continue
         last_row += 1
         for column, value in person.as_row().items():
             if not _filled(value):
                 continue
-            # Text in a numeric column (an age of "Unknown") stays plain text.
-            number_format = NUMBER_FORMATS.get(column) if column == "Property ID" or isinstance(value, (int, float)) else None
+            if column == "Property ID":
+                value, number_format = _id_cell(value)
+            else:
+                # Text in a numeric column (an age of "Unknown") stays plain text.
+                number_format = NUMBER_FORMATS.get(column) if isinstance(value, (int, float)) else None
             sheet.write_cell(last_row, col_of[column], value, number_format)
-        seen.add(person.property_id)
+        seen.add(_id_key(person.property_id))
         result.added.append(person)
         result.first_row = result.first_row or last_row
     return result
@@ -119,11 +123,20 @@ def _map_columns(headers: list[object]) -> dict[str, int]:
     return col_of
 
 
-def _id_text(value: object) -> str:
-    """Property IDs typed into Excel come back as numbers (1068268088.0); compare them as text."""
+def _id_key(value: object) -> str:
+    """Compare Property IDs whether the cell holds a number (1068268088.0) or text ("1068268088", "0012")."""
     if isinstance(value, float) and value.is_integer():
-        return str(int(value))
-    return str(value).strip()
+        value = int(value)
+    text = str(value).strip()
+    return (text.lstrip("0") or "0") if text.isdigit() else text
+
+
+def _id_cell(property_id: str) -> tuple[object, str | None]:
+    """An all-digit ID goes in as a number. Leading zeros stay visible through the format ("0012" shows as 0012)."""
+    if not property_id.isdigit() or len(property_id.lstrip("0")) > MAX_EXACT_DIGITS:
+        return property_id, "@"
+    number_format = "0" * len(property_id) if property_id.startswith("0") else NUMBER_FORMATS["Property ID"]
+    return int(property_id), number_format
 
 
 def _column_letter(col: int) -> str:

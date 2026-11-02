@@ -177,7 +177,9 @@ class ExcelWorkbook:
     def write_cell(self, row: int, col: int, value: object, number_format: str | None = None) -> None:
         cell = self._ws.Cells(row, col)
         if number_format:
-            cell.NumberFormat = number_format
+            cell.NumberFormat = number_format  # before the value, so a column formatted as Text doesn't keep it text
+        if isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)  # Excel can't take 64-bit integers over COM; its numbers are all doubles anyway
         cell.Value = value
 
     def save(self) -> None:

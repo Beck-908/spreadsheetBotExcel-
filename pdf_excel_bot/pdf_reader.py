@@ -8,11 +8,16 @@ pdfplumber's table extractor drops the row right before a page break, so the
 table is rebuilt from word positions instead: words left of the "Details" column
 are the label, words right of it are the value, and a line that only has a value
 continues the previous label (across pages too).
+
+Every column should end up filled, so each field has fallbacks: other labels the
+same thing goes by, the file name for the person's name, and the birth date for
+the age. Person.notes records when a fallback was used, for the log.
 """
 
 import os
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 import pdfplumber
@@ -21,14 +26,37 @@ from .person import Person
 
 LINE_TOLERANCE = 3.0  # points; words whose tops are this close share a line
 SIZE_TOLERANCE = 1.5  # points; a line in a different font size ends the table
+SAME_ROW = 1.8  # a labelled line closer than this many font sizes below the last one wraps the same table row
 
 # Page furniture above the name, such as the header a browser prints ("11/1/26, 9:15 PM  Page title"), a web address
-# or a page number. The name is the first line at the top of page 1 that isn't one of these.
+# or a page number.
 FURNITURE_RE = re.compile(
     r"^\d{1,2}/\d{1,2}/\d{2,4}\b|^\d{1,2}:\d{2}\s*[AP]M\b|https?://|www\.|^page \d+|^\d+\s*(of|/)\s*\d+$|^\d+$", re.I
 )
+# Headings that start the profile itself; the name is above them.
+SECTION_RE = re.compile(r"^(contact info|property (&|and) financial|property details|attribute\b)", re.I)
 PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}")
+FORMATTED_PHONE_RE = re.compile(r"\(\d{3}\)\s*\d{3}[\s.-]\d{4}|\b\d{3}[.-]\d{3}[.-]\d{4}\b")  # not a bare 10-digit ID
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+MONEY_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?|-?\.\d+")
+YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+# Table labels each field is found under, best first.
+LABELS = {
+    "name": ("responsible person", "owner name", "full name", "name", "owner", "reported owner"),
+    "property_id": ("property id", "property number", "property no", "property #", "id"),
+    "value": ("property value", "value", "amount", "cash value", "reported value", "property amount"),
+    "holder": ("holder", "holder name", "reported by"),
+    "property_type": ("property type", "type"),
+    "classification": ("classification", "class", "category"),
+    "owner_location": ("home address", "current address", "residential address", "residence", "owner location"),
+    "address": ("address", "property address", "reported address", "last known address"),
+    "phone": ("phone", "phone number", "phones", "wireless", "landline", "mobile"),
+    "email": ("email", "email address"),
+    "age": ("age",),
+    "born": ("born", "birth date", "date of birth", "dob", "birthday"),
+}
 
 
 class PdfReadError(Exception):
@@ -47,8 +75,12 @@ class _Line:
     def size(self) -> float:
         return max(w["size"] for w in self.words)
 
+    @property
+    def top(self) -> float:
+        return min(w["top"] for w in self.words)
 
-def read_person(pdf_path: str | os.PathLike) -> Person:
+
+def read_person(pdf_path: str | os.PathLike, today: date | None = None) -> Person:
     path = Path(pdf_path)
     try:
         with pdfplumber.open(path) as pdf:
@@ -61,27 +93,43 @@ def read_person(pdf_path: str | os.PathLike) -> Person:
         raise PdfReadError("No readable text found. It may be a scanned image, which the bot can't read.")
 
     table = _table_fields(pages)
-    person = Person(
-        name=_name(pages[0] or all_lines),
-        property_id=table.get("property id", "").replace(" ", ""),
-        value=_parse_money(table.get("property value") or table.get("value", "")),
-        holder=table.get("holder", ""),
-        property_type=table.get("property type", ""),
-        classification=table.get("classification", ""),
-        owner_location=table.get("home address", ""),
-        address=table.get("address", ""),
-        phone_number="; ".join(_phones(all_lines)),
-        email_address=_email(all_lines),
-        age=_parse_int(table.get("age", "")),
-        source=path.name,
-    )
-    if not person.property_id:
+    notes: list[str] = []
+
+    def field(key: str, contains: tuple[str, ...] = ()) -> str:
+        return _pick(table, LABELS[key], contains)
+
+    property_id = field("property_id").replace(" ", "")
+    if not property_id:
         raise PdfReadError("No Property ID found. Is this a property profile PDF?")
-    if not person.name:
-        raise PdfReadError("No name found at the top of the first page.")
-    if "(cid:" in person.name:
-        raise PdfReadError("The name at the top is in a font the PDF doesn't let programs read. Ask for the original PDF.")
-    return person
+
+    owner_location = field("owner_location", contains=("home",))
+    if not owner_location and table.get("location"):
+        owner_location = table["location"]
+        notes.append("Owner Location is the PDF's Location (no Home Address)")
+
+    age = _parse_int(field("age"))
+    if not isinstance(age, int):
+        born_age = _age_from_birth(field("born"), today or date.today())
+        if born_age is not None:
+            age = born_age
+            notes.append("Age worked out from the birth date")
+
+    phones = _phones(all_lines) or _unique(FORMATTED_PHONE_RE.findall(field("phone") + "\n" + _text(all_lines)))
+    return Person(
+        name=_name(pages[0] or all_lines, field("name"), path, notes),
+        property_id=property_id,
+        value=_parse_money(field("value", contains=("value", "amount"))),
+        holder=field("holder", contains=("holder",)),
+        property_type=field("property_type", contains=("type",)),
+        classification=field("classification"),
+        owner_location=owner_location,
+        address=field("address", contains=("address",)),
+        phone_number="; ".join(phones),
+        email_address=_email(all_lines),
+        age=age,
+        source=path.name,
+        notes=notes,
+    )
 
 
 def _lines(words: list[dict]) -> list[_Line]:
@@ -99,20 +147,28 @@ def _norm(text: str) -> str:
     return " ".join(text.lower().rstrip(":").split())
 
 
+def _text(lines: list[_Line]) -> str:
+    return "\n".join(line.text for line in lines)
+
+
+def _unique(items: list[str]) -> list[str]:
+    return list(dict.fromkeys(items))
+
+
 def _is_table_header(line: _Line) -> bool:
     return line.words[0]["text"] == "Attribute" and any(w["text"] == "Details" for w in line.words)
 
 
 def _table_fields(pages: list[list[_Line]]) -> dict[str, str]:
     """Return {normalised label: value} for every Attribute/Details row in the PDF."""
-    fields: dict[str, list[str]] = {}
-    current: str | None = None
+    rows: list[list] = []  # [label, value parts]
     for lines in pages:
         value_x = header_size = None  # set while inside a table on this page
+        last_top = None
         for line in lines:
             if _is_table_header(line):
                 details = next(w for w in line.words if w["text"] == "Details")
-                value_x, header_size = details["x0"] - 2, line.size
+                value_x, header_size, last_top = details["x0"] - 2, line.size, None
                 continue
             if value_x is None:
                 continue
@@ -121,22 +177,80 @@ def _table_fields(pages: list[list[_Line]]) -> dict[str, str]:
                 continue
             label = " ".join(w["text"] for w in line.words if w["x0"] < value_x)
             value = " ".join(w["text"] for w in line.words if w["x0"] >= value_x)
-            if label:
-                current = _norm(label)
-                fields[current] = [value] if value else []
-            elif current is not None:
-                fields[current].append(value)
-    return {label: " ".join(parts) for label, parts in fields.items()}
+            wraps = rows and last_top is not None and line.top - last_top < SAME_ROW * line.size
+            if label and wraps:
+                rows[-1][0] += " " + label  # a long label ("Property" / "Value") wrapped inside its row
+            elif label:
+                rows.append([label, []])
+            if value and rows:
+                rows[-1][1].append(value)
+            last_top = line.top
+    return {_norm(label): " ".join(parts) for label, parts in rows}
 
 
-def _name(lines: list[_Line]) -> str:
-    """The first line at the top of page 1, skipping printed headers, web addresses and page numbers."""
-    for line in lines:
-        if _norm(line.text) == "contact information" or _is_table_header(line):
-            return ""  # reached the profile itself without a name
-        if not FURNITURE_RE.search(line.text.strip()):
-            return line.text
+def _pick(table: dict[str, str], labels: tuple[str, ...], contains: tuple[str, ...] = ()) -> str:
+    """The value under the first of `labels` the table has; failing that, under any label containing `contains`."""
+    for label in labels:
+        if table.get(label):
+            return table[label]
+    for label, value in table.items():
+        if value and any(word in label for word in contains):
+            return value
     return ""
+
+
+def _name(lines: list[_Line], table_name: str, path: Path, notes: list[str]) -> str:
+    """The name at the top of page 1. If the PDF doesn't have it as readable text, a Name row in
+    the table, then the PDF's file name (these profiles are saved under the person's name)."""
+    name = _top_name(lines, path.stem)
+    if name and "(cid:" not in name:
+        return name
+    if table_name:
+        notes.append("name taken from the table, not the top of the page")
+        return table_name
+    from_file = _clean_file_name(path.stem)
+    if from_file:
+        notes.append("name taken from the file name; the top of the page had no readable name")
+    return from_file
+
+
+def _top_name(lines: list[_Line], file_stem: str) -> str:
+    """The biggest text above the Contact Information heading, skipping printed headers (date, web address,
+    page number). A line matching the file name wins, and a name too long for one line is joined back up."""
+    top: list[_Line] = []
+    for line in lines:
+        text = line.text.strip()
+        if SECTION_RE.search(text) or _is_table_header(line):
+            break
+        if FURNITURE_RE.search(text) or not any(c.isalpha() for c in text) or ":" in text:
+            continue  # page furniture, a lone number, or a "Wireless: …" line
+        top.append(line)
+    if not top:
+        return ""
+
+    stem = _letters(file_stem)
+    matching = [i for i, line in enumerate(top) if stem and _letters(line.text) == stem]
+    biggest = max(line.size for line in top)
+    first = matching[0] if matching else next(i for i, line in enumerate(top) if line.size >= biggest - 0.5)
+
+    parts = [top[first]]
+    for line in top[first + 1:]:
+        close = line.top - parts[-1].top < SAME_ROW * line.size
+        if not close or abs(line.size - parts[-1].size) > 0.5:
+            break
+        parts.append(line)
+    return " ".join(part.text for part in parts).strip()
+
+
+def _letters(text: str) -> str:
+    return re.sub(r"[^a-z]", "", text.lower())
+
+
+def _clean_file_name(stem: str) -> str:
+    """'Jordan_Avery (1)' -> 'Jordan Avery'. Blank when the file name has no letters."""
+    text = re.sub(r"\(\d+\)|\bcopy\b", " ", stem, flags=re.I)
+    text = " ".join(re.sub(r"[_]+", " ", text).split())
+    return text if any(c.isalpha() for c in text) else ""
 
 
 def _phones(lines: list[_Line]) -> list[str]:
@@ -149,18 +263,13 @@ def _phones(lines: list[_Line]) -> list[str]:
     for line in lines[start + 1:]:
         if _is_table_header(line) or line.size >= heading_size - SIZE_TOLERANCE:
             break  # next section
-        for phone in PHONE_RE.findall(line.text):
-            if phone not in phones:
-                phones.append(phone)
-    return phones
+        phones.extend(PHONE_RE.findall(line.text))
+    return _unique(phones)
 
 
 def _email(lines: list[_Line]) -> str:
-    match = EMAIL_RE.search("\n".join(line.text for line in lines))
+    match = EMAIL_RE.search(_text(lines))
     return match.group(0) if match else ""
-
-
-MONEY_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?|-?\.\d+")
 
 
 def _parse_money(text: str) -> float | None:
@@ -171,6 +280,23 @@ def _parse_money(text: str) -> float | None:
 
 
 def _parse_int(text: str) -> int | str | None:
+    """'47' or '47 years' -> 47. Text with no number ('Unknown') is kept as it is."""
     if not text:
         return None
-    return int(text) if text.strip().isdigit() else text
+    match = re.search(r"\d+", text)
+    return int(match.group(0)) if match else text
+
+
+def _age_from_birth(text: str, today: date) -> int | None:
+    """'Mar 1979', '03/15/1979' or '1979' -> age today. When only the year is known, assumes the birthday has passed."""
+    year = YEAR_RE.search(text or "")
+    if not year:
+        return None
+    born = int(year.group(0))
+    lowered = text.lower()
+    month = next((i for i, m in enumerate(MONTHS, start=1) if m in lowered), None)
+    numeric = re.match(r"\s*(\d{1,2})[/-]", text)
+    if month is None and numeric and 1 <= int(numeric.group(1)) <= 12:
+        month = int(numeric.group(1))
+    age = today.year - born - (1 if month and month > today.month else 0)
+    return age if 0 <= age < 130 else None

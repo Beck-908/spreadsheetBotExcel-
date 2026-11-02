@@ -21,8 +21,8 @@ code-signed. Click **More info → Run anyway**.
 
 | People tab column  | Taken from the PDF                                   |
 |--------------------|------------------------------------------------------|
-| Responsible Person | The name at the top of page 1                        |
-| Property ID        | Property ID (kept as text so no digits are lost)     |
+| Responsible Person | The name at the top of page 1 (see below)            |
+| Property ID        | Property ID, stored as a number (leading zeros still show) |
 | Value              | Property Value, stored as a number in dollar format (blank if the PDF gives no figure) |
 | Holder             | Holder                                               |
 | Property Type      | Property Type                                        |
@@ -31,7 +31,16 @@ code-signed. Click **More info → Run anyway**.
 | Address            | Address                                              |
 | Phone Number       | Every phone number under Contact Information, separated by "; " |
 | Email Address      | Any email address in the PDF (blank if none)         |
-| Age                | Age                                                  |
+| Age                | Age, or worked out from the birth date ("Born") if there's no Age |
+
+**The name.** The bot takes the biggest text above "Contact Information" on page 1, skipping a
+browser's printed date/title header, web addresses and page numbers. A name that wraps onto two
+lines is joined back up. If a line on top matches the PDF's file name, that line wins. If the
+top of the page has no readable name at all, the bot uses a "Responsible Person"/"Name"/"Owner"
+row in the table, and failing that the PDF's file name. The log says when it did that.
+
+**Other labels.** The bot also understands common alternatives, such as "Amount" or "Value" for
+Property Value, "Type", "Category", "Property Address", and "Location" when there's no Home Address.
 
 - **Column order doesn't matter.** The bot finds columns by their header names in the first
   10 rows. It also accepts "Name" for Responsible Person, "Property Value" or "Address Value"
@@ -59,13 +68,12 @@ backup back. Delete old backups whenever you like.
 ## Troubleshooting
 
 **Which version?** The window title and the first log line show the version, for example
-"PDF to Excel Bot 1.2". If someone gets different results from you, check they have the same one.
+"PDF to Excel Bot 1.3". If someone gets different results from you, check they have the same one.
 Each log line also shows the name and value read from every PDF.
 
 | Message | What to do |
 |---------|------------|
-| "No name found at the top of the first page" | The bot skips printed headers (date, web address, page number) above the name. If it still fails, send the PDF to whoever maintains the bot. |
-| "…a font the PDF doesn't let programs read" | The name is in the PDF but can't be read as text. Ask for the original PDF. |
+| "(name taken from the file name…)" | The top of the page had no readable name, so the file name was used. Name PDFs after the person. |
 | "No readable text found… scanned image" | The PDF is a picture of a page. Ask for the original PDF; the bot can't read scans. |
 | "No Property ID found" | That PDF isn't in the property-profile layout. |
 | "…is open in another program" | Close the workbook (no-Excel mode only) and press Run again. |

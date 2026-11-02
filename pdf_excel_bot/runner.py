@@ -41,6 +41,7 @@ def run(
         people.append(person)
         missing = person.missing_fields()
         note = f" (not in PDF: {', '.join(missing)})" if missing else ""
+        note += "".join(f" ({n})" for n in person.notes)
         value = f"${person.value:,.2f}" if person.value is not None else "none"
         log(f"✓ Read {person.name}, Property ID {person.property_id}, Value {value}, from {pdf.name}{note}")
 

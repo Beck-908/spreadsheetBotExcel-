@@ -33,15 +33,17 @@ DEFAULT_PAGE2_ROWS = [
 
 
 def _table(pdf: FPDF, top: float, rows: list[tuple[str, list[str]]]) -> None:
-    """Draw an Attribute/Details table starting at `top`, one ruled row per entry."""
+    """Draw an Attribute/Details table starting at `top`, one ruled row per entry. A label may wrap with "\n"."""
     all_rows = [("Attribute", ["Details"])] + rows
     y = top
     pdf.line(TABLE_LEFT, y, TABLE_RIGHT, y)
     for i, (label, value_lines) in enumerate(all_rows):
-        height = ROW_H + LINE_H * (len(value_lines) - 1)
+        label_lines = label.split("\n")
+        height = ROW_H + LINE_H * (max(len(value_lines), len(label_lines)) - 1)
         baseline = y + 15
         pdf.set_font("Helvetica", "B", 10)
-        pdf.text(LABEL_X, baseline, label)
+        for n, line in enumerate(label_lines):
+            pdf.text(LABEL_X, baseline + n * LINE_H, line)
         pdf.set_font("Helvetica", "B" if i == 0 else "", 10)
         for n, line in enumerate(value_lines):
             pdf.text(VALUE_X, baseline + n * LINE_H, line)
@@ -58,8 +60,11 @@ def build_profile_pdf(
     page1_rows: list[tuple[str, list[str]]] | None = None,
     page2_rows: list[tuple[str, list[str]]] | None = None,
     header: list[str] | None = None,
+    banner: list[tuple[str, float]] | None = None,
 ) -> Path:
-    """header: small lines printed above the name, like a browser's "Save as PDF" date/title header."""
+    """header: small lines printed above the name, like a browser's "Save as PDF" date/title header.
+    banner: (text, font size) lines above the name, like a website's title. name may be "" for no name,
+    and may contain a newline to wrap a long name onto two lines."""
     contacts = DEFAULT_CONTACTS if contacts is None else contacts
     page1_rows = DEFAULT_PAGE1_ROWS if page1_rows is None else page1_rows
     page2_rows = DEFAULT_PAGE2_ROWS if page2_rows is None else page2_rows
@@ -72,8 +77,12 @@ def build_profile_pdf(
         pdf.text(30, 22 + n * 12, text)
     if header:
         pdf.text(30, 780, "1/2")  # page number at the bottom
+    for n, (text, size) in enumerate(banner or []):
+        pdf.set_font("Helvetica", "", size)
+        pdf.text(72, 40 + n * 14, text)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.text((612 - pdf.get_string_width(name)) / 2, 82, name)
+    for n, part in enumerate(name.split("\n") if name else []):
+        pdf.text((612 - pdf.get_string_width(part)) / 2, 82 + n * 14, part)
     pdf.rect(239, 107, 134, 200)  # stands in for the photo
 
     pdf.set_font("Helvetica", "B", 16)

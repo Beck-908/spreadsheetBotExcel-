@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from conftest import DEFAULT_PAGE1_ROWS, build_profile_pdf
@@ -75,6 +77,59 @@ def test_name_skips_printed_page_headers(tmp_path, header):
     person = read_person(build_profile_pdf(tmp_path / "printed.pdf", header=header))
     assert person.name == "Jordan Avery Testcase"
     assert person.value == 12345.67
+
+
+def test_name_is_the_biggest_text_above_the_profile(tmp_path):
+    # Small site text above the name is not the name.
+    person = read_person(build_profile_pdf(tmp_path / "x.pdf", banner=[("Search results for owner", 8)]))
+    assert person.name == "Jordan Avery Testcase"
+
+
+def test_name_matching_the_file_name_wins_over_a_big_banner(tmp_path):
+    pdf = build_profile_pdf(tmp_path / "Jordan Avery Testcase.pdf", banner=[("PROPERTY REPORT", 18)])
+    assert read_person(pdf).name == "Jordan Avery Testcase"
+
+
+def test_long_name_wrapped_onto_two_lines(tmp_path):
+    pdf = build_profile_pdf(tmp_path / "x.pdf", name="SANCTUM MANAGEMENT PTE\nLIMITED")
+    assert read_person(pdf).name == "SANCTUM MANAGEMENT PTE LIMITED"
+
+
+def test_no_name_text_falls_back_to_a_name_row_then_the_file_name(tmp_path):
+    rows = [("Responsible Person", ["Pat Example"]), *DEFAULT_PAGE1_ROWS]
+    person = read_person(build_profile_pdf(tmp_path / "x.pdf", name="", page1_rows=rows))
+    assert person.name == "Pat Example" and person.notes
+
+    person = read_person(build_profile_pdf(tmp_path / "Jordan_Avery Testcase (1).pdf", name=""))
+    assert person.name == "Jordan Avery Testcase"
+    assert "file name" in person.notes[0]
+
+
+def test_wrapped_label_keeps_its_value(tmp_path):
+    # A narrow label column wraps "Property Value" onto two lines; the value sits on the first.
+    rows = [DEFAULT_PAGE1_ROWS[0], ("Property\nValue", ["$9,876.50"]), *DEFAULT_PAGE1_ROWS[2:]]
+    person = read_person(build_profile_pdf(tmp_path / "x.pdf", page1_rows=rows))
+    assert person.value == 9876.50
+    assert person.property_type == "SC01: DIVIDENDS"
+
+
+def test_other_labels_and_age_from_birth_date(tmp_path):
+    page1 = [("Property ID", ["5550001234"]), ("Amount", ["$500.00"]), ("Holder", ["X INC"]),
+             ("Type", ["Wages"]), ("Category", ["Cash"]), ("Location", ["AUSTIN, TX"]),
+             ("Property Address", ["1 Main St"])]
+    page2 = [("Born", ["Mar 1979"])]
+    person = read_person(build_profile_pdf(tmp_path / "x.pdf", page1_rows=page1, page2_rows=page2),
+                         today=date(2026, 11, 1))
+    assert (person.value, person.property_type, person.classification) == (500.0, "Wages", "Cash")
+    assert person.owner_location == "AUSTIN, TX" and person.address == "1 Main St"
+    assert person.age == 47
+    assert person.missing_fields() == []
+
+
+def test_phone_numbers_without_a_contact_section(tmp_path):
+    rows = [*DEFAULT_PAGE1_ROWS, ("Phone", ["(512) 555-0100"])]
+    person = read_person(build_profile_pdf(tmp_path / "x.pdf", contacts=[], page1_rows=rows))
+    assert person.phone_number == "(512) 555-0100"  # and not the 10-digit Property ID
 
 
 def test_scanned_pdf_raises(blank_pdf):

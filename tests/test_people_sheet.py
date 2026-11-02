@@ -43,7 +43,7 @@ def test_empty_sheet_gets_headers_then_people():
     result = append_people(sheet, [person()])
 
     assert sheet.row(1) == list(COLUMNS)
-    assert sheet.row(2) == ["Jordan Avery", "5550001234", 12345.67, "EXAMPLE INC", "SC01: DIVIDENDS", "Cash",
+    assert sheet.row(2) == ["Jordan Avery", 5550001234, 12345.67, "EXAMPLE INC", "SC01: DIVIDENDS", "Cash",
                             "42 Test Lane, Austin, TX", "1 Main St, Springfield, IL", "(512) 555-0134", "j@example.com", 47]
     assert result.first_row == 2
     assert [p.property_id for p in result.added] == ["5550001234"]
@@ -59,7 +59,7 @@ def test_existing_headers_in_other_order_and_aliases():
     assert new["Email"] == "j@example.com"
     assert new["Name"] == "Jordan Avery"
     assert new["Phone"] == "(512) 555-0134"
-    assert new["Property ID"] == "5550001234"
+    assert new["Property ID"] == 5550001234
     assert new["Age"] == 47
 
 
@@ -88,7 +88,7 @@ def test_header_row_below_a_title_and_trailing_blank_rows():
     ])
     result = append_people(sheet, [person()])
     assert result.first_row == 6
-    assert sheet.row(6)[:2] == ["Jordan Avery", "5550001234"]
+    assert sheet.row(6)[:2] == ["Jordan Avery", 5550001234]
 
 
 def test_duplicate_property_ids_are_skipped():
@@ -121,11 +121,26 @@ def test_number_formats():
     sheet = ListSheet()
     append_people(sheet, [person(), person("888", value=None, age="Unknown")])
 
-    assert sheet.formats[(2, 2)] == "@"
+    assert sheet.formats[(2, 2)] == "0"
     assert sheet.formats[(2, 3)] == '"$"#,##0.00'
     assert sheet.formats[(2, 11)] == "0"
     assert len(sheet.row(3)) < 3 or sheet.row(3)[2] is None  # no figure in the PDF: Value left blank
     assert (3, 11) not in sheet.formats  # an age that is text stays unformatted
+
+
+def test_property_id_is_a_number():
+    sheet = ListSheet()
+    append_people(sheet, [person("5550001234"), person("0012345"), person("A-77"), person("1234567890123456789")])
+
+    assert [sheet.row(n)[1] for n in (2, 3, 4, 5)] == [5550001234, 12345, "A-77", "1234567890123456789"]
+    assert sheet.formats[(3, 2)] == "0000000"  # still shows as 0012345
+    assert sheet.formats[(4, 2)] == "@" and sheet.formats[(5, 2)] == "@"  # not a number, or too long for Excel
+
+
+def test_duplicates_match_ids_stored_as_text_or_numbers():
+    sheet = ListSheet([list(COLUMNS), ["Old", "5550001234"], ["Old", 12345.0]])
+    result = append_people(sheet, [person("5550001234"), person("0012345"), person("999")])
+    assert [p.property_id for p in result.added] == ["999"]
 
 
 def test_blank_fields_leave_cells_empty():

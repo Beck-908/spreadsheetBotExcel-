@@ -22,6 +22,11 @@ from .person import Person
 LINE_TOLERANCE = 3.0  # points; words whose tops are this close share a line
 SIZE_TOLERANCE = 1.5  # points; a line in a different font size ends the table
 
+# Page furniture above the name, such as the header a browser prints ("11/1/26, 9:15 PM  Page title"), a web address
+# or a page number. The name is the first line at the top of page 1 that isn't one of these.
+FURNITURE_RE = re.compile(
+    r"^\d{1,2}/\d{1,2}/\d{2,4}\b|^\d{1,2}:\d{2}\s*[AP]M\b|https?://|www\.|^page \d+|^\d+\s*(of|/)\s*\d+$|^\d+$", re.I
+)
 PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
@@ -57,7 +62,7 @@ def read_person(pdf_path: str | os.PathLike) -> Person:
 
     table = _table_fields(pages)
     person = Person(
-        name=_name(all_lines),
+        name=_name(pages[0] or all_lines),
         property_id=table.get("property id", "").replace(" ", ""),
         value=_parse_money(table.get("property value") or table.get("value", "")),
         holder=table.get("holder", ""),
@@ -74,6 +79,8 @@ def read_person(pdf_path: str | os.PathLike) -> Person:
         raise PdfReadError("No Property ID found. Is this a property profile PDF?")
     if not person.name:
         raise PdfReadError("No name found at the top of the first page.")
+    if "(cid:" in person.name:
+        raise PdfReadError("The name at the top is in a font the PDF doesn't let programs read. Ask for the original PDF.")
     return person
 
 
@@ -123,10 +130,13 @@ def _table_fields(pages: list[list[_Line]]) -> dict[str, str]:
 
 
 def _name(lines: list[_Line]) -> str:
-    first = lines[0]
-    if _norm(first.text) == "contact information" or _is_table_header(first):
-        return ""
-    return first.text
+    """The first line at the top of page 1, skipping printed headers, web addresses and page numbers."""
+    for line in lines:
+        if _norm(line.text) == "contact information" or _is_table_header(line):
+            return ""  # reached the profile itself without a name
+        if not FURNITURE_RE.search(line.text.strip()):
+            return line.text
+    return ""
 
 
 def _phones(lines: list[_Line]) -> list[str]:

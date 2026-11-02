@@ -9,6 +9,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from . import VERSION
 from .people_sheet import SheetLayoutError
 from .runner import RunSummary, run
 from .workbooks import WorkbookError
@@ -41,7 +42,7 @@ class BotWindow:
         self.workbook = tk.StringVar(value=self.settings.get("workbook", ""))
         self.status = tk.StringVar(value="Add PDFs, choose the workbook, then press Run.")
 
-        root.title(APP_NAME)
+        root.title(f"{APP_NAME} {VERSION}")
         root.minsize(680, 560)
         frame = ttk.Frame(root, padding=14)
         frame.pack(fill="both", expand=True)

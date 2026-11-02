@@ -65,6 +65,18 @@ def test_unparseable_age_keeps_raw_text(tmp_path):
     assert person.age == "Unknown"
 
 
+@pytest.mark.parametrize("header", [
+    ["11/1/26, 9:15 PM                    Jordan Avery Testcase - Profile"],  # Chrome/Edge "Save as PDF"
+    ["9:15 PM", "https://example.com/profiles/5550001234"],
+    ["Page 1 of 2"],
+    ["1"],
+])
+def test_name_skips_printed_page_headers(tmp_path, header):
+    person = read_person(build_profile_pdf(tmp_path / "printed.pdf", header=header))
+    assert person.name == "Jordan Avery Testcase"
+    assert person.value == 12345.67
+
+
 def test_scanned_pdf_raises(blank_pdf):
     with pytest.raises(PdfReadError, match="scanned"):
         read_person(blank_pdf)

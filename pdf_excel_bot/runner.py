@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import VERSION
 from .pdf_reader import PdfReadError, read_person
 from .people_sheet import append_people
 from .person import Person
@@ -29,6 +30,7 @@ def run(
     """Raises WorkbookError / SheetLayoutError when the workbook itself can't be used."""
     summary = RunSummary()
     people: list[Person] = []
+    log(f"PDF to Excel Bot {VERSION}")
     for pdf in map(Path, pdf_paths):
         try:
             person = read_person(pdf)
@@ -39,7 +41,8 @@ def run(
         people.append(person)
         missing = person.missing_fields()
         note = f" (not in PDF: {', '.join(missing)})" if missing else ""
-        log(f"✓ Read {person.name}, Property ID {person.property_id}, from {pdf.name}{note}")
+        value = f"${person.value:,.2f}" if person.value is not None else "none"
+        log(f"✓ Read {person.name}, Property ID {person.property_id}, Value {value}, from {pdf.name}{note}")
 
     if not people:
         log("Nothing to add because no PDF could be read. The workbook was not touched.")

@@ -39,6 +39,8 @@ def test_batch_adds_skips_and_reports(tmp_path, book, profile_pdf, blank_pdf):
     for name in ("jordan.pdf", "scanned.pdf", "jordan_copy.pdf"):
         assert name in text
     assert "1 added, 1 skipped as duplicates, 1 failed" in text
+    assert log[0].startswith("PDF to Excel Bot ")  # which build ran
+    assert "✓ Read Jordan Avery Testcase, Property ID 5550001234, Value $12,345.67, from jordan.pdf" in text
 
 
 def test_nothing_readable_leaves_workbook_alone(tmp_path, book, blank_pdf):

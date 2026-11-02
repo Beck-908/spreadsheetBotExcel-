@@ -57,7 +57,9 @@ def build_profile_pdf(
     contacts: list[tuple[str, str]] | None = None,
     page1_rows: list[tuple[str, list[str]]] | None = None,
     page2_rows: list[tuple[str, list[str]]] | None = None,
+    header: list[str] | None = None,
 ) -> Path:
+    """header: small lines printed above the name, like a browser's "Save as PDF" date/title header."""
     contacts = DEFAULT_CONTACTS if contacts is None else contacts
     page1_rows = DEFAULT_PAGE1_ROWS if page1_rows is None else page1_rows
     page2_rows = DEFAULT_PAGE2_ROWS if page2_rows is None else page2_rows
@@ -65,6 +67,11 @@ def build_profile_pdf(
     pdf = FPDF(unit="pt", format="letter")
     pdf.set_auto_page_break(False)
     pdf.add_page()
+    pdf.set_font("Helvetica", "", 8)
+    for n, text in enumerate(header or []):
+        pdf.text(30, 22 + n * 12, text)
+    if header:
+        pdf.text(30, 780, "1/2")  # page number at the bottom
     pdf.set_font("Helvetica", "B", 11)
     pdf.text((612 - pdf.get_string_width(name)) / 2, 82, name)
     pdf.rect(239, 107, 134, 200)  # stands in for the photo

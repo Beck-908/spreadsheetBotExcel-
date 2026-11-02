@@ -58,8 +58,14 @@ backup back. Delete old backups whenever you like.
 
 ## Troubleshooting
 
+**Which version?** The window title and the first log line show the version, for example
+"PDF to Excel Bot 1.2". If someone gets different results from you, check they have the same one.
+Each log line also shows the name and value read from every PDF.
+
 | Message | What to do |
 |---------|------------|
+| "No name found at the top of the first page" | The bot skips printed headers (date, web address, page number) above the name. If it still fails, send the PDF to whoever maintains the bot. |
+| "…a font the PDF doesn't let programs read" | The name is in the PDF but can't be read as text. Ask for the original PDF. |
 | "No readable text found… scanned image" | The PDF is a picture of a page. Ask for the original PDF; the bot can't read scans. |
 | "No Property ID found" | That PDF isn't in the property-profile layout. |
 | "…is open in another program" | Close the workbook (no-Excel mode only) and press Run again. |

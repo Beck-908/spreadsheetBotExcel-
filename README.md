@@ -6,12 +6,17 @@ Reads property-profile PDFs (one person per PDF) and adds each person as a new r
 ## Using it
 
 1. Double-click **`dist\PDF to Excel Bot.exe`** (or `run_bot.bat` if you run it from source).
-2. **Add PDFs…** to pick one or more PDFs, or **Add folder…** to add every PDF in a folder.
-3. **Browse…** to pick the workbook. The bot remembers it next time.
-4. Press **Run** and watch the log.
+2. Drag PDFs onto the window, or use the **paperclip** (pick PDFs) or **folder** (every PDF in a folder) buttons.
+3. Pick the workbook from the menu at the bottom left. It remembers your recent workbooks and
+   shows how many people each one already holds. **Choose another workbook…** opens any other.
+4. Optionally change **Auto** to **Excel** (always type into Excel) or **File only** (edit the file
+   without opening Excel). Auto uses Excel when it's installed.
+5. Press the **arrow** button.
 
-When it finishes, the workbook opens on the People tab with the new rows at the bottom.
-Any PDF that couldn't be read stays in the list, and the log says why.
+Each PDF appears as it's read, then shows the row it went into, "Already in sheet", or why it
+couldn't be read. A one-line summary says what changed and where the backup went. When it
+finishes, the workbook opens on the People tab. **Try the failed PDFs again** puts any failures
+back in the box.
 
 The .exe is self-contained, so coworkers don't need Python. Copy that one file to them.
 Windows may warn "Windows protected your PC" the first time, because the file isn't
@@ -67,19 +72,31 @@ backup back. Delete old backups whenever you like.
 
 ## Troubleshooting
 
-**Which version?** The window title and the first log line show the version, for example
-"PDF to Excel Bot 1.3". If someone gets different results from you, check they have the same one.
-Each log line also shows the name and value read from every PDF.
+**Which version?** The window title and the top of the window show the version, for example
+"PDF to Excel Bot 2.0". If someone gets different results from you, check they have the same one.
+
+**The log.** Every run's full log (the name and value read from every PDF, warnings, and any
+error details) is saved to `%APPDATA%\PdfExcelBot\last run.log`. Paste that into Windows
+Explorer's address bar to find it. Send it along when reporting a problem.
+
+**The classic window.** The window needs Microsoft's WebView2 runtime, which comes with Windows 10
+and 11 through Edge. If it can't open, the bot opens its older plain window instead and saves the
+reason to `%APPDATA%\PdfExcelBot\desktop window error.log`. You can also open the classic window
+on purpose with `app.py --classic`.
 
 | Message | What to do |
 |---------|------------|
 | "(name taken from the file name…)" | The top of the page had no readable name, so the file name was used. Name PDFs after the person. |
 | "No readable text found… scanned image" | The PDF is a picture of a page. Ask for the original PDF; the bot can't read scans. |
+| "The file isn't there any more" | The PDF was moved, renamed or deleted after you added it. Add it again from where it is now. |
+| "Excel isn't installed on this PC" | You chose **Excel** mode on a PC without Excel. Choose **Auto** or **File only**. |
 | "No Property ID found" | That PDF isn't in the property-profile layout. |
 | "…is open in another program" | Close the workbook (no-Excel mode only) and press Run again. |
 | "…no header row with 'Responsible Person' (or 'Name') and 'Property ID'" | The People tab has data but no recognizable headers. Add a header row, or point the bot at the right workbook. |
 
 ## For developers
+
+You need Python 3.12+ and Node.js 20+.
 
 ```bat
 python -m venv .venv
@@ -88,15 +105,24 @@ python -m venv .venv
 build_exe.bat
 ```
 
-`build_exe.bat` rebuilds `dist\PDF to Excel Bot.exe`.
+`build_exe.bat` builds the window's UI (`frontend\` into `frontend\dist`), then packs everything into
+`dist\PDF to Excel Bot.exe`.
+
+**Working on the UI.** Run `npm run dev` in `frontend\` and open http://localhost:5174. In the
+browser the UI talks to a fake bot with made-up people (`frontend/src/lib/bot.ts`), so you can
+click through everything without touching real files. To see your changes in the real window,
+run `npm run build` and then `.venv\Scripts\python app.py`.
 
 | File | Job |
 |------|-----|
 | `pdf_excel_bot/pdf_reader.py` | Turns one PDF into a `Person`. It rebuilds the Attribute/Details table from word positions, because the standard table extractor drops the last row before a page break. |
 | `pdf_excel_bot/people_sheet.py` | Finds headers, skips duplicates and appends rows, through a two-method `SheetBackend` interface. |
 | `pdf_excel_bot/workbooks.py` | `ExcelWorkbook` (drives Excel via COM), `FileWorkbook` (openpyxl) and backups. |
-| `pdf_excel_bot/runner.py` | One batch run. |
-| `pdf_excel_bot/gui.py` | The window. |
+| `pdf_excel_bot/runner.py` | One batch run, with optional per-PDF progress callbacks. |
+| `pdf_excel_bot/desktop.py` | The desktop window: shows `frontend/dist` with pywebview, and its `Api` is what the page calls (pick files, list workbooks, run). It also listens for dropped files, because only Python gets their full paths. |
+| `frontend/` | The window's UI (React, Tailwind, shadcn). `src/lib/bot.ts` is the page's side of `Api`, plus the fake bot. `src/components/ai-blob.tsx` comes from React Bits (Starter licence). |
+| `pdf_excel_bot/gui.py` | The classic Tkinter window, kept as the fallback. |
+| `pdf_excel_bot/settings.py` | Recent workbooks, last PDF folder and the last run's log, in `%APPDATA%\PdfExcelBot`. |
 
 Tests build fake PDFs in the same layout (`tests/conftest.py`), so no real customer data is stored here.
 The Excel (COM) path hasn't been tested on a machine with Excel yet.

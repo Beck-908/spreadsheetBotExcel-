@@ -43,6 +43,26 @@ def test_batch_adds_skips_and_reports(tmp_path, book, profile_pdf, blank_pdf):
     assert "✓ Read Jordan Avery Testcase, Property ID 5550001234, Value $12,345.67, from jordan.pdf" in text
 
 
+def test_progress_callbacks_and_rows(tmp_path, book, profile_pdf, blank_pdf):
+    other = build_profile_pdf(tmp_path / "other.pdf", page1_rows=[("Property ID", ["777"]), ("Holder", ["X INC"])])
+    events = []
+
+    summary = run(
+        [profile_pdf, blank_pdf, other], book, lambda _: None, show_result=False,
+        on_reading=lambda pdf: events.append(("reading", pdf.name)),
+        on_read=lambda pdf, person, error: events.append(("read", pdf.name, person and person.property_id, bool(error))),
+    )
+
+    assert events == [
+        ("reading", "jordan.pdf"), ("read", "jordan.pdf", "5550001234", False),
+        ("reading", "scanned.pdf"), ("read", "scanned.pdf", None, True),
+        ("reading", "other.pdf"), ("read", "other.pdf", "777", False),
+    ]
+    assert summary.first_row == 2  # header in row 1; the two added people are rows 2 and 3
+    assert [p.property_id for p in summary.added] == ["5550001234", "777"]
+    assert summary.warnings == []
+
+
 def test_nothing_readable_leaves_workbook_alone(tmp_path, book, blank_pdf):
     before = book.read_bytes()
     log = []

@@ -132,6 +132,12 @@ def test_phone_numbers_without_a_contact_section(tmp_path):
     assert person.phone_number == "(512) 555-0100"  # and not the 10-digit Property ID
 
 
+def test_missing_file_gets_a_plain_message(tmp_path):
+    with pytest.raises(PdfReadError, match="isn't there any more") as caught:
+        read_person(tmp_path / "gone.pdf")
+    assert "Errno" not in str(caught.value)
+
+
 def test_scanned_pdf_raises(blank_pdf):
     with pytest.raises(PdfReadError, match="scanned"):
         read_person(blank_pdf)

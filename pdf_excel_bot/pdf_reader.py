@@ -85,6 +85,10 @@ def read_person(pdf_path: str | os.PathLike, today: date | None = None) -> Perso
     try:
         with pdfplumber.open(path) as pdf:
             pages = [_lines(page.extract_words(extra_attrs=["size"])) for page in pdf.pages]
+    except FileNotFoundError as exc:
+        raise PdfReadError("The file isn't there any more. It may have been moved, renamed or deleted.") from exc
+    except PermissionError as exc:
+        raise PdfReadError("Windows wouldn't let the bot open this file. Close it in other programs and try again.") from exc
     except Exception as exc:  # pdfminer raises many unrelated exception types for bad files
         raise PdfReadError(f"Couldn't open the PDF ({exc}).") from exc
 

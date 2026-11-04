@@ -8,6 +8,12 @@ __pycache__/
 build/
 dist/
 
+# Frontend (dist/ above also covers frontend/dist)
+node_modules/
+# Holds REACTBITS_LICENSE_KEY: never commit it.
+.env.local
+.env
+
 # Real profiles and workbooks hold people's personal details: never commit them.
 # (Tests draw their own fake PDFs at run time.)
 *.pdf

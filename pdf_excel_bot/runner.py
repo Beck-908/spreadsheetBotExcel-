@@ -18,6 +18,8 @@ class RunSummary:
     failed: list[tuple[str, str]] = field(default_factory=list)  # (PDF file name, reason)
     backup: Path | None = None
     mode: str | None = None  # "Excel" or "file"
+    first_row: int | None = None  # People tab row of added[0]; the rest follow on consecutive rows
+    warnings: list[str] = field(default_factory=list)
 
 
 def run(
@@ -26,18 +28,30 @@ def run(
     log: Callable[[str], None],
     prefer_excel: bool = True,
     show_result: bool = True,
+    on_reading: Callable[[Path], None] | None = None,
+    on_read: Callable[[Path, Person | None, str | None], None] | None = None,
 ) -> RunSummary:
-    """Raises WorkbookError / SheetLayoutError when the workbook itself can't be used."""
+    """Raises WorkbookError / SheetLayoutError when the workbook itself can't be used.
+
+    on_reading(pdf) fires before each PDF is read; on_read(pdf, person, error) after, with either
+    the Person or the reason it couldn't be read. The desktop window uses them to show live progress.
+    """
     summary = RunSummary()
     people: list[Person] = []
     log(f"PDF to Excel Bot {VERSION}")
     for pdf in map(Path, pdf_paths):
+        if on_reading:
+            on_reading(pdf)
         try:
             person = read_person(pdf)
         except PdfReadError as exc:
             summary.failed.append((pdf.name, str(exc)))
             log(f"✗ {pdf.name}: {exc}")
+            if on_read:
+                on_read(pdf, None, str(exc))
             continue
+        if on_read:
+            on_read(pdf, person, None)
         people.append(person)
         missing = person.missing_fields()
         note = f" (not in PDF: {', '.join(missing)})" if missing else ""
@@ -67,6 +81,7 @@ def run(
         workbook.close()
 
     summary.added, summary.duplicates = result.added, result.duplicates
+    summary.first_row, summary.warnings = result.first_row, result.warnings
     for warning in result.warnings:
         log(f"⚠ {warning}")
     for person in result.duplicates:

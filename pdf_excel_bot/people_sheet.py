@@ -102,6 +102,14 @@ def append_people(sheet: SheetBackend, people: list[Person]) -> AppendResult:
     return result
 
 
+def count_people(values: list[list[object]]) -> int | None:
+    """People already in a sheet: filled rows under the header row. None when there's data but no header row."""
+    header_row = _find_header_row(values)
+    if header_row is None:
+        return None if any(_filled(v) for row in values for v in row) else 0
+    return sum(1 for row in values[header_row:] if any(_filled(v) for v in row))
+
+
 def _filled(value: object) -> bool:
     return value is not None and str(value).strip() != ""
 

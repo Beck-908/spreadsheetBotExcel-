@@ -1,7 +1,9 @@
-"""The bot's window: pick PDFs and a workbook, press Run, watch the log."""
+"""The classic window (Tkinter): pick PDFs and a workbook, press Run, watch the log.
 
-import json
-import os
+The desktop window (desktop.py) replaces it; this one stays as the fallback for PCs where the
+desktop window can't open, and for `app.py --classic`.
+"""
+
 import queue
 import threading
 import traceback
@@ -12,25 +14,10 @@ from tkinter import filedialog, messagebox, ttk
 from . import VERSION
 from .people_sheet import SheetLayoutError
 from .runner import RunSummary, run
+from .settings import load_settings, save_settings
 from .workbooks import WorkbookError
 
 APP_NAME = "PDF to Excel Bot"
-SETTINGS_FILE = Path(os.environ.get("APPDATA", Path.home())) / "PdfExcelBot" / "settings.json"
-
-
-def load_settings() -> dict:
-    try:
-        return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def save_settings(settings: dict) -> None:
-    try:
-        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-    except OSError:
-        pass  # remembering paths is a convenience only
 
 
 class BotWindow:

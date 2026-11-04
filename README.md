@@ -3,9 +3,28 @@
 Reads property-profile PDFs (one person per PDF) and adds each person as a new row in the
 **People** tab of an Excel workbook.
 
+## Installing it
+
+Send people **`PDF-to-Excel-Bot-Setup-<version>.exe`**, either as a link to the GitHub release or
+as the file itself. Then they:
+
+1. Double-click the Setup file. Because it isn't code-signed yet, two warnings may come up the first time:
+   - The browser may say the file "isn't commonly downloaded". Choose **Keep** (in Edge, open the "…" menu).
+   - Windows may say **"Windows protected your PC"**. Click **More info → Run anyway**.
+2. Click **Install**, then **Finish**. The bot opens.
+
+That's it: no admin password, Python, Node or anything else. The bot installs just for that user,
+in `%LOCALAPPDATA%\Programs\PDF to Excel Bot`, with a Start menu entry and a desktop shortcut.
+If the PC lacks Microsoft's WebView2 runtime (rare; it comes with Edge), Setup installs it too.
+
+- **Updating:** run the newer Setup. It closes the bot if it's open and replaces it. Settings and
+  recent workbooks are kept.
+- **Uninstalling:** go to **Settings → Apps → PDF to Excel Bot → Uninstall**. Settings stay in
+  `%APPDATA%\PdfExcelBot` in case it's reinstalled; delete that folder too for a clean removal.
+
 ## Using it
 
-1. Double-click **`dist\PDF to Excel Bot.exe`** (or `run_bot.bat` if you run it from source).
+1. Open **PDF to Excel Bot** from the Start menu or the desktop (or `run_bot.bat` if you run it from source).
 2. Drag PDFs onto the window, or use the **paperclip** (pick PDFs) or **folder** (every PDF in a folder) buttons.
 3. Pick the workbook from the menu at the bottom left. It remembers your recent workbooks and
    shows how many people each one already holds. **Choose another workbook…** opens any other.
@@ -17,10 +36,6 @@ Each PDF appears as it's read, then shows the row it went into, "Already in shee
 couldn't be read. A one-line summary says what changed and where the backup went. When it
 finishes, the workbook opens on the People tab. **Try the failed PDFs again** puts any failures
 back in the box.
-
-The .exe is self-contained, so coworkers don't need Python. Copy that one file to them.
-Windows may warn "Windows protected your PC" the first time, because the file isn't
-code-signed. Click **More info → Run anyway**.
 
 ## What goes where
 
@@ -96,7 +111,7 @@ on purpose with `app.py --classic`.
 
 ## For developers
 
-You need Python 3.12+ and Node.js 20+.
+To build, you need Python 3.12+, Node.js 20+ and Inno Setup 6 (`winget install JRSoftware.InnoSetup --scope user`).
 
 ```bat
 python -m venv .venv
@@ -105,8 +120,16 @@ python -m venv .venv
 build_exe.bat
 ```
 
-`build_exe.bat` builds the window's UI (`frontend\` into `frontend\dist`), then packs everything into
-`dist\PDF to Excel Bot.exe`.
+`build_exe.bat` makes `dist\PDF-to-Excel-Bot-Setup-<version>.exe` in four steps:
+1. Builds the window's UI (`frontend\` into `frontend\dist`).
+2. Packs the app into the folder `dist\PDF to Excel Bot\` with PyInstaller. A folder rather than
+   one file, because it starts faster and antivirus is less suspicious of it.
+3. Downloads Microsoft's WebView2 bootstrapper (once) and checks Microsoft's signature on it.
+4. Compiles `installer\PDF to Excel Bot.iss` with Inno Setup.
+
+**Releasing a new version:** raise `VERSION` in `pdf_excel_bot/__init__.py`, run `build_exe.bat`,
+and send out the new Setup. Never change the `AppId` in the `.iss` file: it's how Setup recognizes
+an existing install to upgrade. The icon is `installer\app.ico`.
 
 **Working on the UI.** Run `npm run dev` in `frontend\` and open http://localhost:5174. In the
 browser the UI talks to a fake bot with made-up people (`frontend/src/lib/bot.ts`), so you can

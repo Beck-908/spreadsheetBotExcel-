@@ -4,9 +4,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# PyInstaller output: rebuild with build_exe.bat
+# PyInstaller and installer output: rebuild with build_exe.bat
 build/
 dist/
+# Microsoft's WebView2 bootstrapper, downloaded by build_exe.bat
+installer/redist/
 
 # Frontend (dist/ above also covers frontend/dist)
 node_modules/
